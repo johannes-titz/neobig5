@@ -1,0 +1,241 @@
+---
+title: "1-ipipneo120"
+author: "Johannes Titz"
+date: "12/10/2021"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache = F, message = F, warning = F)
+```
+
+## Intro
+
+This is analysis 1 of the paper. First, install the `star` package:
+
+```{r eval=TRUE, include=TRUE}
+install.packages("star_0.1.0.tar.gz", repos = NULL, type = "source")
+```
+
+Load some packages. I will use librarian for installing/loading packages. First line checks if librarian is installed, if not, it is installed.
+
+```{r}
+if (!require('librarian')) install.packages('librarian')
+librarian::shelf(tidyr, dplyr, ggplot2, cowplot, corrgram, ggraph, igraph,
+                 GGally, network, ggnetwork, tidygraph, furrr, star,
+                 progressr)
+```
+
+The original data is available at https://osf.io/tbmh5/ It is too large to make it available through `data`, but `star` has the data set under inst/extdata:
+
+```{r data}
+fpath <- system.file("extdata", "ipipneo.rda", package = "star")
+load(fpath)
+```
+
+Set simulation parameters. I am on GNU/Linux, please check that the detection of cores works for you. If it does not work, just set it to a fixed value. `star` uses `parallel` for parallel computation. Sorry, Windows users, parallelization only works under GNU/Linux. You should still be able to run the code, but you cannot take advantage of multiple cores. I tried to implement parallelization via futures (`furrr`), but this turned out to be slower than using a single core.
+
+```{r params}
+mc_cores <- round(parallel::detectCores() - 1)
+alpha <- 0.05 / (24 * 23 * 5)
+param <- sim_parameters(n_bootstrap_samples = 10, mc_cores = mc_cores)
+```
+
+## first analysis, with only 10 simulation runs, only keep p-values of 0
+
+```{r all10}
+ipipneo10 <- xfun::cache_rds(test_items_against_dimension(names(ipipneo), ipipneo, param))
+left_items <- extract_sig_items(ipipneo10, 0)
+```
+
+Check how many items could not be tested properly:
+
+```{r problems}
+ipipneo10 %>% 
+  group_by(i) %>% 
+  summarize(warn = mean(var0 + n_min_violated > 0)) %>% 
+  filter(warn > 0)
+```
+
+None.
+
+## Stepwise tests with more bootstrap samples
+
+The code is not pretty, maybe accumulate can be used here?
+
+```{r stepwise}
+steps <- c(1e2, 1e3, 1e4, 1e5)
+result <- ipipneo10
+for (step in steps) {
+  param$n_bootstrap_samples <- step
+  result <- xfun::cache_rds(test_specific_items(ipipneo, result$i, result$j, param),
+                             file = paste0("stepwise", step))
+  result <- result[result$p <= alpha, ]
+}
+result$group <- substr(result$i, 1, 1)
+result %>% select(i, j, p, deviance_data) %>% filter(p <= alpha)
+```
+## items that need to be removed
+
+This code needs to be improved. It would be better to use a network algorithm to remove the problematic items, but it is also fairly easy to see with the naked eye, except for openness.
+
+```{r}
+e_rm <- c("e82", "e107", "e112")
+e <- filter(result, grepl("e", i) | grepl("e", j))
+e <- filter(e, !(i %in% e_rm), !(j %in% e_rm))
+e
+
+c_rm <- c("c110", "c75")
+c <- filter(result, grepl("c", i) | grepl("c", j))
+c <- filter(c, !(i %in% c_rm), !(j %in% c_rm))
+c
+
+a_rm <- c("a54", "a84", "a104", "a114", "a24")
+a <- filter(result, grepl("a", i) | grepl("a", j))
+a <- filter(a, !(i %in% a_rm), !(j %in% a_rm))
+a
+
+o <- filter(result, grepl("o", i) | grepl("o", j))
+remove <-  names(sort(table(c(o$i, o$j)), decreasing = T))[1:16]
+o <- filter(o, !(i %in% remove), !(j %in% remove))
+o
+d <- create_ipip_neo_items()
+d %>% filter(item_char %in% stringr::str_to_upper(remove)) %>%
+  arrange(facet, item_number)
+```
+
+## some exemplary severe violations
+
+First change item labels for consistency (capitalize):
+
+```{r}
+result <- mutate(result,
+                 i = stringr::str_to_upper(i),
+                 j = stringr::str_to_upper(j))
+names(ipipneo) <- stringr::str_to_upper(names(ipipneo))
+```
+
+```{r}
+data(ipipneo_items)
+items <- ipipneo_items
+severe <- arrange(result, -deviance_data) %>%
+  group_by(group) %>%
+  slice(1:2) %>% ungroup() %>% slice(1, 3, 5, 7, 9, 10)
+severe <- severe %>% mutate(item_number_i = as.numeric(substr(i, 2, 4)),
+                            item_number_j = as.numeric(substr(j, 2, 4)))
+severe <- left_join(severe, items, by = c("item_number_i" = "item_number"))
+severe <- left_join(severe, items, by = c("item_number_j" = "item_number"))
+severe <- mutate(severe, item_content.x = paste(i, item_content.x),
+                 item_content.y = paste(j, item_content.y))
+  # slice(1:6, 143, 144, 285, 286)
+plots <- Map(function(x, y) plot_it(ipipneo[, c(x, y)], with_n = FALSE), severe$i, severe$j)
+
+plots2 <- Map(function(plot, item_x, item_y) plot + scale_x_continuous(item_x) + 
+      scale_y_continuous(item_y), plots, severe$item_content.x, severe$item_content.y)
+plots2
+pdf("plots/ipip_neo_severe.pdf", width = 8.5 * 1.1, height =  10 * 1.1)
+plot_grid(plotlist = plots2, ncol = 2, labels = "AUTO", label_x = 0.52)
+dev.off()
+```
+
+## network graph
+
+This code is somewhat messy.
+
+```{r}
+## network graph -----
+vertices <- data.frame(name = unique(c(result$i, result$j)))
+vertices$factor <- substr(vertices$name, 1, 1)
+vertices$factor_num <- match(vertices$factor,
+                             names(c("N" = 1, "E" = 2, "O" = 3, "A" = 4, "C" = 5)))
+vertices$facet <- (as.numeric(substr(vertices$name, 2, 4)) %% 30 - vertices$factor_num + 5 ) / 5
+vertices$facet <- ifelse(vertices$facet == 0, 6, vertices$facet)
+vertices_a <- vertices[vertices$factor != "O", ]
+
+graph1 <- as_tbl_graph(
+  graph_from_data_frame(result[!grepl("o", result$group), c(1, 2, 4, 5)],  directed = T,
+                        vertices = vertices_a)
+)
+graph1
+
+ggraph1 <- ggraph(graph1, layout = "kk") + 
+  #geom_edge_link(arrow = arrow(length = unit(2, "mm")), end_cap = circle(2, "mm")) + 
+  geom_edge_link(aes(start_cap = label_rect(node1.name),
+                     end_cap = label_rect(node2.name), alpha = 0.5, show_guide = F),
+                     #width = critical_fit), 
+                 arrow = arrow(length = unit(1, 'mm'))) + 
+  scale_edge_alpha(guide = "none") +
+  #geom_node_point(shape = 21, size = 10) + 
+  #geom_node_text(aes(label = name), color = "black") +
+  geom_node_label(aes(label = name, fill = as.factor(facet)), alpha = 0.5) + 
+  scale_fill_brewer(palette = "Set3", name = "Facet", position = "bottom") +
+                  #fill = "lightgrey") +
+  theme_graph() +
+  theme(plot.margin = unit(c(0.2, 0.1, 0.05, 0.1), "cm"), legend.position = "bottom")
+ggraph1
+```
+
+```{r}
+graph2 <- as_tbl_graph(
+  graph_from_data_frame(result[grepl("o", result$group), c(1, 2, 4:5)],
+                        vertices = vertices[vertices$factor == "O", ]),
+  directed = T
+)
+graph2
+
+ggraph2 <- ggraph(graph2, layout = "kk") + 
+  #geom_edge_link(arrow = arrow(length = unit(2, "mm")), end_cap = circle(2, "mm")) + 
+  geom_edge_link(aes(start_cap = label_rect(node1.name),
+                     end_cap = label_rect(node2.name), alpha = .5),
+                     #width = critical_fit), 
+                 arrow = arrow(length = unit(1, 'mm'))) + 
+  #geom_node_point(shape = 21, size = 10) + 
+  #geom_node_text(aes(label = name), color = "black") +
+  geom_node_label(aes(label = name, fill = as.factor(facet)), alpha = 0.5) + 
+  scale_fill_brewer(palette = "Set3", name = "Facet") +
+  theme_graph() + 
+  theme(plot.margin = unit(c(0.05, 0.1, 0.2, 0.1), "cm"), legend.position = "none")
+ggraph2
+#facet_nodes(~popularity)
+
+```
+
+```{r}
+cairo_pdf("plots/ipip_neo_network_all.pdf", width = 10, height = 14)
+plot_grid(ggraph1, ggraph2, nrow = 2)
+dev.off()
+```
+
+## power analysis for items N51 and A84
+
+```{r powern51}
+i <- rep("N51", 4)
+j <- c("N16", "N46", "N76", "N106")
+
+power51 <- create_object(
+  ipipneo, i, j, sample_size = 857,
+  bootstrap_samples_power = 1e3,
+  bootstrap_samples_monoreg = 1e3,
+  alpha = 0.025
+)
+
+power <- xfun::cache_rds(calculate_power(power51)$power)
+power
+```
+
+```{r powera84}
+i <- rep("A84", 7)
+j <- c("A4", "A34", "A64", "A94", "A99", "A74", "A49")
+
+res <- create_object(
+  ipipneo, i, j, sample_size = 857, 
+  bootstrap_samples_power = 1e3,
+  bootstrap_samples_monoreg = 1e3,
+  alpha = 0.025
+)
+power <- xfun::cache_rds(calculate_power(res)$power)
+power
+```

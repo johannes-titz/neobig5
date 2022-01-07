@@ -1,0 +1,195 @@
+---
+title: "3-neopir-dolan.Rmd"
+author: "Johannes Titz"
+date: "12/13/2021"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache = FALSE, message = FALSE, warning = FALSE)
+```
+
+This is analysis 3 of the paper. If you have not yet installed the `star` package, do it now:
+
+```{r eval=TRUE, include=TRUE}
+install.packages("star_0.1.0.tar.gz", repos = NULL, type = "source")
+```
+
+The original data set is available in the `qgraph` R package. I restructured the data slightly and repackaged it into `star` under the same name as in `qgraph` (big5):
+
+```{r}
+library(star)
+data(big5, package = "star")
+```
+
+Load some packages and use a short name for the data set. I will use librarian for installing/loading packages. First line checks if librarian is installed, if not, it is installed.
+
+```{r}
+if (!require('librarian')) install.packages('librarian')
+librarian::shelf(tidyr, dplyr, ggplot2, cowplot)
+neo <- big5
+```
+
+Set simulation parameters. I am on GNU/Linux, please check that the detection of cores works for you. If it does not work, just set it to a fixed value. `star` uses the `parallel` for parallel computation. Sorry, Windows users, parallelization only works under GNU/Linux. You should still be able to run the code, but you cannot take advantage of multiple cores. I tried to implement parallelization via futures (`furrr`), but this turned out to be slower than using a single core.
+
+```{r params}
+mc_cores <- round(parallel::detectCores() - 1)
+alpha <- 0.05 / 240
+param <- sim_parameters(n_bootstrap_samples = 10, mc_cores = mc_cores)
+```
+
+## Test items against dimensions with 10 bootstrap samples
+
+Only 10 bootstrap samples are used to quickly filter out non-significant items:
+
+```{r all10}
+neo_pi_r10 <- xfun::cache_rds(test_items_against_dimension(names(neo), neo, param))
+left_items <- extract_sig_items(neo_pi_r10, 0.2)
+```
+
+Check how many items could not be tested properly:
+
+```{r}
+library(dplyr)
+neo_pi_r10 %>% 
+  group_by(i) %>% 
+  summarize(warn = mean(var0 + n_min_violated > 0)) %>% 
+  filter(warn > 0)
+```
+
+## 100
+
+```{r left100}
+param$n_bootstrap_samples <- 1e2
+neo_pi_r100 <- xfun::cache_rds(test_items_against_dimension(left_items, neo, param))
+left_items <- extract_sig_items(neo_pi_r100, 0.05)
+```
+
+## 1k
+
+```{r left1k}
+param$n_bootstrap_samples <- 1e3
+neo_pi_r1k <- xfun::cache_rds(test_items_against_dimension(left_items, neo, param))
+left_items <- extract_sig_items(neo_pi_r1k, 0.005)
+```
+
+## 20k
+
+```{r left20k}
+param$n_bootstrap_samples <- 2e4
+neo_pi_r20k <- xfun::cache_rds(test_items_against_dimension(left_items, neo, param))
+neo_pi_r20k <- neo_pi_r20k %>% filter(p_aggregated <= alpha)
+```
+
+## Create results table
+
+```{r results}
+neo_pi_r20k_agg <- neo_pi_r20k %>% group_by(i) %>%
+  select(i, j, p, aggregated_deviance, p_aggregated, n_min_violated, var0, n) %>% 
+  slice(1) %>%
+  ungroup() %>%
+  transmute(Item = factor(i, levels = stringr::str_sort(i, numeric = TRUE)),
+            p = format.pval(p_aggregated, digits = 4, eps = 5e-5, scientific = F),
+            Deviance = aggregated_deviance, n_min_violated, var0, n) %>%
+  arrange(Item)
+neo_pi_r20k_agg
+neo_pi_r20k_agg <- neo_pi_r20k_agg %>% select(-n_min_violated, -var0, -n)
+res <- xtable::xtable(
+  neo_pi_r20k_agg,
+  caption = "Items That Significantly Violate Monotonicity in the Revised Dutch NEO Personality Inventory Data Set at an $\\alpha$ of .000208", 
+  label = "tab:neo_pi_r_dolan2",
+  digits = c(0, 0, 3, 3), align = "llrr"
+)
+print(res, include.rownames = F, booktabs = TRUE, file = "tables/dolan.tex",
+      caption.placement = "top", label = "tab:neo_pi_r_dolan2")
+```
+
+## partial fits plot
+```{r}
+# second plot
+partial <- neo_pi_r20k %>% filter(deviance_data != 0)
+small <- tidyr::pivot_longer(partial, cols = partial_deviances.1:partial_deviances.5)
+
+items <- create_neo_pi_r_items()
+small2 <- left_join(small, items, by = c("j" = "item_char")) %>%
+  arrange(i, facet, facet_item) %>% 
+  mutate(label = as.factor(paste(facet, facet_item, item_number)))
+
+small3 <- small2 %>% group_by(i, j) %>% mutate(value_percent = value / aggregated_deviance)
+
+small4 <- small2 %>% group_by(i, facet) %>% summarize(value_percent = sum(value/aggregated_deviance, na.rm=T))
+small5 <- left_join(small4, items, by = c("i" = "item_char"))
+
+small5 <- mutate(small5,
+                 label = ifelse(nchar(i) == 4,
+                                paste(dimension, facet.y, item_number),
+                                paste(dimension, " ", facet.y, "   ", item_number, sep = "")),
+                 value_percent = value_percent * 100)
+
+p2 <- ggplot(small5, aes(as.factor(facet.x), label, fill = value_percent)) + 
+  geom_raster() + 
+  coord_equal() + 
+  scale_fill_gradient(name = "%", low = "white", high = "black", na.value = "white") + 
+  scale_x_discrete(name = "Facet", labels = 1:6) +
+  scale_y_discrete(name = "Item", position = "left") + 
+  theme(legend.position = "right")+
+  theme(legend.position = "bottom",
+        #axis.text.y=element_blank(),
+        #axis.title.y=element_blank(),
+        panel.background=element_blank(),
+        panel.border=element_blank()
+        #text = element_text(size = 20)
+        )
+p2
+
+pdf("plots/dolan_partial.pdf", width = 7*0.7, height = 9)
+p2
+dev.off()
+```
+
+## Analysis of item a144, against trust facet
+
+```{r a144}
+a144 <- xfun::cache_rds({
+  test_specific_items(neo, rep("A144", 8), paste("A", seq(4, 214, 30), sep = ""),
+                      param)
+  })
+knitr::kable(a144, digits = 4)
+```
+
+## figure 7
+
+```{r}
+data("neo_pi_r_eugene")
+sum_score <- rowSums(big5[, paste("O", seq(23, 233, 30), sep="")], na.rm = T)
+
+sum_score_eugene <- rowSums(neo_pi_r_eugene[, paste("O", seq(23, 233, 30), sep="")], na.rm = T)
+d <- rbind(data.frame(facet5 = sum_score, questionnaire = "Netherlands Sample",
+                      O88 = big5$O88, O18 = big5$O18),
+           data.frame(facet5 = sum_score_eugene, questionnaire = "U.S. Sample",
+                      O88 = neo_pi_r_eugene$O88, O18 = neo_pi_r_eugene$O18))
+d <- na.omit(d)
+p1 <- ggplot(d, aes(as.factor(O88), facet5)) + geom_boxplot() + facet_wrap(~questionnaire) + 
+  theme_classic() + 
+  scale_x_discrete("O88, Facet Values (Liberal, Nonreligious)") + 
+  scale_y_continuous("Sum Score Facet Ideas (Intellectualism)")
+
+p2 <- ggplot(d, aes(as.factor(O18), facet5)) + geom_boxplot() + facet_wrap(~questionnaire) + 
+  theme_classic() +
+  scale_x_discrete("O18, Facet Actions (Nonroutine)") + 
+  scale_y_continuous("Sum Score Facet Ideas (Intellectualism)")
+p1
+table(d$O88, d$questionnaire)
+p2
+table(d$O18, d$questionnaire)
+```
+
+```{r}
+pdf("plots/dolan_boxplots.pdf", width = 7, height = 7)
+gridExtra::grid.arrange(p1, p2)
+dev.off()
+```
+

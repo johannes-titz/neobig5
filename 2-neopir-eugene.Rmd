@@ -1,0 +1,224 @@
+---
+title: "NEO-PI-R Eugene"
+author: "Johannes Titz"
+date: "12/3/2021"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+---
+
+<!-- PID: 3756 -->
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache = F, message = F, warning = FALSE)
+```
+
+## Intro
+
+This is analysis 2 of the paper. If you have not yet installed the `star` package, do it now:
+
+```{r eval=TRUE, include=TRUE}
+install.packages("star_0.1.0.tar.gz", repos = NULL, type = "source")
+```
+
+The original data is available at https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/HE6LJR but I also packaged it into `star`:
+
+```{r}
+library(star)
+data("neo_pi_r_eugene")
+```
+
+## prepare 
+
+Load some packages and use a short name for the data set. I will use librarian for installing/loading packages. First line checks if librarian is installed, if not, it is installed.
+
+```{r}
+if (!require('librarian')) install.packages('librarian')
+librarian::shelf(tidyr, dplyr, ggplot2, cowplot, furrr)
+neo <- neo_pi_r_eugene
+```
+
+Set simulation parameters. I am on GNU/Linux, please check that the detection of cores works for you. If it does not work, just set it to a fixed value. `star` uses `parallel` for parallel computation. Sorry, Windows users, parallelization only works under GNU/Linux. You should still be able to run the code, but you cannot take advantage of multiple cores. I tried to implement parallelization via futures (`furrr`), but this turned out to be slower than using a single core.
+
+```{r params}
+mc_cores <- round(parallel::detectCores() - 1)
+alpha <- 0.05 / 240
+param <- sim_parameters(n_bootstrap_samples = 1e4, mc_cores = mc_cores)
+```
+
+## Analysis of item a144, against trust facet
+
+```{r a144}
+a144 <- xfun::cache_rds({
+  test_specific_items(neo, rep("A144", 8), paste("A", seq(4, 214, 30), sep = ""),
+                      param)
+  },
+  rerun = F)
+knitr::kable(a144, digits = 4)
+```
+
+The significance tests gives a residual of `r a144$aggregated_deviance[1]` and a $p$-value of `r a144$p_aggregated[1]`.
+
+## create plots for Item A144
+
+```{r plota144}
+# plots for a144
+plots <- Map(function(x, y) 
+  plot_it(neo[, c(x, y)]), a144$i, a144$j)
+plots
+
+# arrange and save for actual publication
+pdf("plots/neo_pi_r_a144.pdf", width = 8.5*1.1, height = 12 * 1.1)
+plot_grid(plotlist = plots, ncol = 2, labels = "AUTO")
+dev.off()
+```
+
+## Test items against dimensions with 10 bootstrap samples
+
+Only 10 bootstrap samples are used to quickly filter out non-significant items (this might be running faster with a single core):
+
+```{r all10}
+param$n_bootstrap_samples <- 10
+neo_pi_r10 <- xfun::cache_rds(test_items_against_dimension(names(neo), neo, param))
+left_items <- extract_sig_items(neo_pi_r10, 0.2)
+```
+
+Check how many items could not be tested properly:
+
+```{r}
+library(dplyr)
+neo_pi_r10 %>% 
+  group_by(i) %>% 
+  summarize(warn = mean(var0 + n_min_violated > 0)) %>% 
+  filter(warn > 0)
+```
+
+## 100
+
+```{r left100}
+param$n_bootstrap_samples <- 1e2
+neo_pi_r100 <- xfun::cache_rds(test_items_against_dimension(left_items, neo, param))
+left_items <- extract_sig_items(neo_pi_r100, 0.05)
+```
+
+## 1k
+
+From here on, you should definitely use parallel computation.
+
+```{r left1k}
+param$n_bootstrap_samples <- 1e3
+neo_pi_r1k <-xfun::cache_rds(test_items_against_dimension(left_items, neo, param))
+left_items <- extract_sig_items(neo_pi_r1k, 0.005)
+```
+
+## 20k
+
+```{r left20k}
+param$n_bootstrap_samples <- 2e4
+neo_pi_r20k <- xfun::cache_rds(test_items_against_dimension(left_items, neo, param))
+neo_pi_r20k <- neo_pi_r20k %>% filter(p_aggregated <= alpha)
+```
+
+## Create results table
+
+```{r results}
+neo_pi_r20k_agg <- neo_pi_r20k %>% group_by(i) %>%
+  select(i, j, p, aggregated_deviance, p_aggregated, n_min_violated, var0, n) %>% 
+  slice(1) %>%
+  ungroup() %>%
+  transmute(Item = i,
+            `$p$` = format.pval(p_aggregated, digits = 4, eps = 5e-5, scientific = F),
+            Deviance = aggregated_deviance, n_min_violated, var0, n)
+neo_pi_r20k_agg
+neo_pi_r20k_agg <- neo_pi_r20k_agg %>% select(-n_min_violated, -var0, -n)
+res <- xtable::xtable(
+  neo_pi_r20k_agg,
+  caption = "Items That Significantly Violate Monotonicity in the Revised NEO Personality Inventory (Eugene Springfield Sample) at an $\\alpha$ of .000208",
+  label = "tab:neo_pi_r",
+  digits = c(0, 0, 3, 3), align = "llrr"
+)
+print(res, include.rownames = F, booktabs = TRUE, file = "tables/neo_pi_r.tex",
+      caption.placement = "top", label = "tab:neo_pi_r")
+```
+
+## Partial Fit plots
+
+Sorry, this code is currently somewhat messy and not commented.
+
+```{r}
+agg <- neo_pi_r20k %>% group_by(i) %>% 
+  filter(p_aggregated <= alpha) %>%
+  summarize_at(vars(contains("partial_deviances")), sum, na.rm=T) %>%
+  select(sort(current_vars()))
+# agg$partial_deviances.1[agg$i == "A164"] <- NA
+# agg$partial_deviances.1[agg$i == "E2"] <- NA
+#agg$partial_deviances.5[agg$i == "E2"] <- NA
+
+small <- pivot_longer(agg, cols = contains("partial_deviances"))
+small3 <- small %>% group_by(i) %>% mutate(value_percent = value / sum(value, na.rm = T))
+small3$value_percent <- small3$value_percent * 100
+p1 <- ggplot(small3, aes(name, i, fill = value_percent)) + 
+  geom_raster() + 
+  coord_equal() + 
+  scale_fill_gradient(name = "%", low = "white", high = "black", na.value = "white",
+                      limits = c(0, 100)) + 
+  scale_x_discrete(name = "Scale Point", labels = 1:5) + 
+  scale_y_discrete(name = "Item") +
+  annotate("text", 1, 3, label = "NA") +
+  theme(legend.position="left", 
+        panel.background=element_blank(),
+        panel.border=element_blank(),
+        text = element_text(size = 20))
+p1
+```
+
+```{r}
+# second plot
+partial <- neo_pi_r20k %>% dplyr::filter(deviance_data != 0)
+#small <- pivot_longer(partial, cols = partial_deviances.1:partial_deviances.5)
+
+items <- create_neo_pi_r_items()
+small2 <- left_join(partial, items, by = c("j" = "item_char")) %>%
+  arrange(i, facet, facet_item) %>% 
+  mutate(label = as.factor(paste(facet, facet_item, item_number)))
+
+agg <- small2 %>% group_by(i, facet) %>% summarize(facet_fit = sum(deviance_data, na.rm=T))
+agg2 <- agg %>% mutate(facet_fit_percentage = facet_fit/sum(facet_fit))
+agg3 <- left_join(agg2, items, by = c("i" = "item_char"))
+agg3$facet_fit_percentage <- agg3$facet_fit_percentage * 100
+
+#pdf(file = "plots/neo_pi_r_partial_deviances2.pdf", width = 7*0.55, height = 10*0.8)
+p2 <- ggplot(agg3, aes(as.factor(facet.x), i, fill = facet_fit_percentage)) + 
+  geom_raster() + 
+  coord_equal() + 
+  scale_fill_gradient(name = "%", low = "white", high = "black", na.value = "white",
+                      limits = c(0, 100), guide = "none") + 
+  scale_x_discrete(name = "Facet", labels = 1:6) +
+  scale_y_discrete(name = "Item", position = "right") + 
+  theme(legend.position="left", 
+        #axis.text.y=element_blank(),
+        #axis.title.y=element_blank(),
+        panel.background=element_blank(),
+        panel.border=element_blank(),
+        text = element_text(size = 20)
+        )
+p2
+#dev.off()
+
+pdf("plots/eugene_complete.pdf", width = 12, height = 7)
+plot_grid(p1, p2, nrow = 1)
+dev.off()
+```
+
+## Item C35
+
+```{r}
+res <- neo %>% 
+  select(grep("C", names(neo))) %>% 
+  group_by(C35) %>% 
+  summarize_all(function(x) mean(x, na.rm = T)) %>% 
+  slice(1:5)
+table(neo$C35)
+table(apply(res, 2, function(x) all(x[1] > x[2:5])))
+```
+
