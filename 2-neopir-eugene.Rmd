@@ -49,6 +49,12 @@ param <- sim_parameters(n_bootstrap_samples = 1e4, mc_cores = mc_cores)
 set.seed(5989)
 ```
 
+Set cache dir for simpleCache:
+
+```{r}
+setCacheDir("cache")
+```
+
 ## Test 1: A144 against trust
 
 ```{r a144}
