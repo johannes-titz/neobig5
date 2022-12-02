@@ -28,7 +28,23 @@ The original data is available at https://dataverse.harvard.edu/dataset.xhtml?pe
 ```{r}
 library(star)
 data("neo_pi_r_eugene")
+neo <- neo_pi_r_eugene
 ```
+
+The data set contains some participants that produced many missing values:
+
+```{r}
+missing <- rowSums(is.na(neo))
+stem(missing)
+```
+
+Participants with more than 5% missing values were removed (about 2% of the sample).
+
+```{r}
+mean(missing > nrow(neo) * 0.05)
+neo <- neo[!missing, ]
+```
+
 
 ## prepare 
 
@@ -52,7 +68,7 @@ set.seed(5989)
 Set cache dir for simpleCache:
 
 ```{r}
-setCacheDir("cache")
+setCacheDir("cache_eugene")
 ```
 
 ## Test 1: A144 against trust
@@ -101,7 +117,7 @@ Only 10 bootstrap samples are used to quickly filter out non-significant items (
 
 ```{r all10}
 param$n_bootstrap_samples <- 10
-simpleCache("neo_pi_r_eugene10",
+simpleCache("neo_pi_r10",
             {test_items_against_dimension(names(neo), neo, param)})
 left_items <- extract_sig_items(neo_pi_r10, 0.2)
 ```
@@ -120,7 +136,7 @@ neo_pi_r10 %>%
 
 ```{r left100}
 param$n_bootstrap_samples <- 1e2
-simpleCache("neo_pi_r_eugene100", 
+simpleCache("neo_pi_r100", 
             {test_items_against_dimension(left_items, neo, param)})
 left_items <- extract_sig_items(neo_pi_r100, 0.05)
 ```
@@ -131,7 +147,7 @@ From here on, you should definitely use parallel computation.
 
 ```{r left1k}
 param$n_bootstrap_samples <- 1e3
-simpleCache("neo_pi_r_eugene1k", 
+simpleCache("neo_pi_r1k", 
             {test_items_against_dimension(left_items, neo, param)})
 left_items <- extract_sig_items(neo_pi_r1k, 0.005)
 ```
@@ -140,7 +156,7 @@ left_items <- extract_sig_items(neo_pi_r1k, 0.005)
 
 ```{r left20k}
 param$n_bootstrap_samples <- 2e4
-simpleCache("neo_pi_r_eugene20k", 
+simpleCache("neo_pi_r20k", 
             {test_items_against_dimension(left_items, neo, param)})
 neo_pi_r20k <- neo_pi_r20k %>% filter(p_aggregated <= alpha)
 ```
