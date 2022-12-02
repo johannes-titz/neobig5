@@ -204,16 +204,6 @@ p2
 dev.off()
 ```
 
-## Test 1: a144 against trust
-
-```{r a144}
-a144 <- xfun::cache_rds({
-  test_specific_items(neo, rep("A144", 8), paste("A", seq(4, 214, 30), sep = ""),
-                      param)
-  })
-knitr::kable(a144, digits = 4)
-```
-
 ## figure 7
 
 ```{r}
