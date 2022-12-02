@@ -87,13 +87,13 @@ dev.off()
 o6 <- paste0("O", seq(28, 238, 30))
 o5 <- paste0("O", seq(23, 233, 30))
 comps <- expand.grid(o6, o5, stringsAsFactors = F)
-simpleCache("open", {
+simpleCache("valuesideas", {
   test_specific_items(neo, comps$Var1, comps$Var2,
                       param)
   })
 ```
 
-The significance tests gives a residual of `r open$aggregated_deviance[1]` and a $p$-value of `r open$p_aggregated[1]`.
+The significance tests gives a residual of `r valuesideas$aggregated_deviance[1]` and a $p$-value of `r valuesideas$p_aggregated[1]`.
 
 ## Test items against dimensions with 10 bootstrap samples
 
@@ -101,8 +101,8 @@ Only 10 bootstrap samples are used to quickly filter out non-significant items (
 
 ```{r all10}
 param$n_bootstrap_samples <- 10
-simpleCache("neo_pi_r10",
-            {test_items_against_dimension(names(neo), neo, param}))
+simpleCache("neo_pi_r_eugene10",
+            {test_items_against_dimension(names(neo), neo, param)})
 left_items <- extract_sig_items(neo_pi_r10, 0.2)
 ```
 
@@ -120,7 +120,7 @@ neo_pi_r10 %>%
 
 ```{r left100}
 param$n_bootstrap_samples <- 1e2
-simpleCache("neo_pi_r100", 
+simpleCache("neo_pi_r_eugene100", 
             {test_items_against_dimension(left_items, neo, param)})
 left_items <- extract_sig_items(neo_pi_r100, 0.05)
 ```
@@ -131,7 +131,7 @@ From here on, you should definitely use parallel computation.
 
 ```{r left1k}
 param$n_bootstrap_samples <- 1e3
-simpleCache("neo_pi_r1k", 
+simpleCache("neo_pi_r_eugene1k", 
             {test_items_against_dimension(left_items, neo, param)})
 left_items <- extract_sig_items(neo_pi_r1k, 0.005)
 ```
@@ -140,7 +140,7 @@ left_items <- extract_sig_items(neo_pi_r1k, 0.005)
 
 ```{r left20k}
 param$n_bootstrap_samples <- 2e4
-simpleCache("neo_pi_r20k", 
+simpleCache("neo_pi_r_eugene20k", 
             {test_items_against_dimension(left_items, neo, param)})
 neo_pi_r20k <- neo_pi_r20k %>% filter(p_aggregated <= alpha)
 ```
