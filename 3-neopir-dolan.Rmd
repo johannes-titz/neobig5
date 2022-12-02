@@ -15,7 +15,9 @@ knitr::opts_chunk$set(echo = TRUE, cache = FALSE, message = FALSE, warning = FAL
 This is analysis 3 of the paper. If you have not yet installed the `star` package, do it now:
 
 ```{r eval=TRUE, include=TRUE}
-install.packages("star_0.1.0.tar.gz", repos = NULL, type = "source")
+if (require("star") == F) {
+  install.packages("star_0.1.0.tar.gz", repos = NULL, type = "source")
+}
 ```
 
 The original data set is available in the `qgraph` R package. I restructured the data slightly and repackaged it into `star` under the same name as in `qgraph` (big5):
@@ -29,8 +31,30 @@ Load some packages and use a short name for the data set. I will use librarian f
 
 ```{r}
 if (!require('librarian')) install.packages('librarian')
-librarian::shelf(tidyr, dplyr, ggplot2, cowplot)
+librarian::shelf(tidyr, dplyr, ggplot2, cowplot, simpleCache)
+data("neo_pi_r_eugene")
 neo <- big5
+```
+
+The data set contains some participants that produced many missing values:
+
+```{r}
+missing <- rowSums(is.na(neo))
+stem(missing)
+```
+
+Participants with more than 5% missing values were removed (about 2% of the sample).
+
+```{r}
+filter <- missing <= nrow(neo) * 0.05
+mean(filter)
+neo <- neo[filter, ]
+```
+
+Set cache dir for simpleCache:
+
+```{r}
+setCacheDir("cache_dolan")
 ```
 
 Set simulation parameters. I am on GNU/Linux, please check that the detection of cores works for you. If it does not work, just set it to a fixed value. `star` uses the `parallel` for parallel computation. Sorry, Windows users, parallelization only works under GNU/Linux. You should still be able to run the code, but you cannot take advantage of multiple cores. I tried to implement parallelization via futures (`furrr`), but this turned out to be slower than using a single core.
@@ -38,22 +62,49 @@ Set simulation parameters. I am on GNU/Linux, please check that the detection of
 ```{r params}
 mc_cores <- round(parallel::detectCores() - 1)
 alpha <- 0.05 / 240
-param <- sim_parameters(n_bootstrap_samples = 10, mc_cores = mc_cores)
+param <- sim_parameters(n_bootstrap_samples = 1e4, mc_cores = mc_cores)
 ```
+
+## Test 1: A144 against trust
+
+```{r a144}
+simpleCache("a144", {
+  test_specific_items(neo, rep("A144", 8), paste("A", seq(4, 214, 30), sep = ""),
+                      param)
+  })
+knitr::kable(a144, digits = 4)
+```
+
+The significance tests gives a residual of `r a144$aggregated_deviance[1]` and a $p$-value of `r a144$p_aggregated[1]`.
+
+## Test 2: values versus ideas
+
+```{r values ideas}
+o6 <- paste0("O", seq(28, 238, 30))
+o5 <- paste0("O", seq(23, 233, 30))
+comps <- expand.grid(o6, o5, stringsAsFactors = F)
+simpleCache("valuesideas", {
+  test_specific_items(neo, comps$Var1, comps$Var2,
+                      param)
+  })
+```
+
+The significance tests gives a residual of `r valuesideas$aggregated_deviance[1]` and a $p$-value of `r valuesideas$p_aggregated[1]`.
 
 ## Test items against dimensions with 10 bootstrap samples
 
 Only 10 bootstrap samples are used to quickly filter out non-significant items:
 
 ```{r all10}
-neo_pi_r10 <- xfun::cache_rds(test_items_against_dimension(names(neo), neo, param))
+param$n_bootstrap_samples <- 10
+simpleCache("neo_pi_r10",
+            {test_items_against_dimension(names(neo), neo, param)})
 left_items <- extract_sig_items(neo_pi_r10, 0.2)
 ```
 
 Check how many items could not be tested properly:
 
 ```{r}
-library(dplyr)
 neo_pi_r10 %>% 
   group_by(i) %>% 
   summarize(warn = mean(var0 + n_min_violated > 0)) %>% 
@@ -64,7 +115,8 @@ neo_pi_r10 %>%
 
 ```{r left100}
 param$n_bootstrap_samples <- 1e2
-neo_pi_r100 <- xfun::cache_rds(test_items_against_dimension(left_items, neo, param))
+simpleCache("neo_pi_r100", 
+            {test_items_against_dimension(left_items, neo, param)})
 left_items <- extract_sig_items(neo_pi_r100, 0.05)
 ```
 
@@ -72,7 +124,8 @@ left_items <- extract_sig_items(neo_pi_r100, 0.05)
 
 ```{r left1k}
 param$n_bootstrap_samples <- 1e3
-neo_pi_r1k <- xfun::cache_rds(test_items_against_dimension(left_items, neo, param))
+simpleCache("neo_pi_r1k", 
+            {test_items_against_dimension(left_items, neo, param)})
 left_items <- extract_sig_items(neo_pi_r1k, 0.005)
 ```
 
@@ -80,7 +133,8 @@ left_items <- extract_sig_items(neo_pi_r1k, 0.005)
 
 ```{r left20k}
 param$n_bootstrap_samples <- 2e4
-neo_pi_r20k <- xfun::cache_rds(test_items_against_dimension(left_items, neo, param))
+simpleCache("neo_pi_r20k", 
+            {test_items_against_dimension(left_items, neo, param)})
 neo_pi_r20k <- neo_pi_r20k %>% filter(p_aggregated <= alpha)
 ```
 
@@ -150,7 +204,7 @@ p2
 dev.off()
 ```
 
-## Analysis of item a144, against trust facet
+## Test 1: a144 against trust
 
 ```{r a144}
 a144 <- xfun::cache_rds({
@@ -191,5 +245,40 @@ table(d$O18, d$questionnaire)
 pdf("plots/dolan_boxplots.pdf", width = 7, height = 7)
 gridExtra::grid.arrange(p1, p2)
 dev.off()
+```
+
+## openness
+```{r}
+o5 <- paste0("O", seq(23, by = 30, length.out = 8))
+o6 <- paste0("O", seq(28, by = 30, length.out = 8))
+
+sum_score <- neo %>% select(all_of(o5)) %>% rowSums(na.rm = TRUE)
+sum_score_o6 <- neo %>% select(all_of(o6)) %>% rowSums(na.rm = TRUE)
+
+df <- data.frame(o6 = sum_score_o6, o5 = sum_score)
+means <- df %>%
+  group_by(o6) %>%
+  summarize(mean = mean(o5, na.rm = TRUE), se = sd(sum_score, na.rm = TRUE) / n(), n = n()) %>%
+  filter(n >= 10)
+
+ggplot(means, aes(o6, mean, ymin = mean - se, ymax = mean + se)) +
+  geom_pointrange(shape = 20) +
+  scale_x_continuous("Sum Score Liberalism") +
+  scale_y_continuous("Sum Score Intellect") +
+  theme_classic()
+
+ggplot(df, aes(o6, o5)) +
+  geom_point() +
+  geom_smooth()
+
+#p <- ggplot(df, aes(o6, o5)) + 
+#  stat_summary(fun.data = "mean_cl_normal",
+#               fun.args = list(conf.int = .95)) +
+#                     theme_classic() +
+#  scale_x_continuous("C110 I put little time and effort into my work. (R)") +
+#  scale_y_continuous("Sum score conscientiousness")
+#p
+
+cor(df, use = "complete.obs")
 ```
 
