@@ -18,7 +18,9 @@ knitr::opts_chunk$set(echo = TRUE, cache = F, message = F, warning = FALSE)
 This is analysis 2 of the paper. If you have not yet installed the `star` package, do it now:
 
 ```{r eval=TRUE, include=TRUE}
-install.packages("star_0.1.0.tar.gz", repos = NULL, type = "source")
+if (require("star") == F) {
+  install.packages("star_0.1.0.tar.gz", repos = NULL, type = "source")
+}
 ```
 
 The original data is available at https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/HE6LJR but I also packaged it into `star`:
@@ -44,9 +46,10 @@ Set simulation parameters. I am on GNU/Linux, please check that the detection of
 mc_cores <- round(parallel::detectCores() - 1)
 alpha <- 0.05 / 240
 param <- sim_parameters(n_bootstrap_samples = 1e4, mc_cores = mc_cores)
+set.seed(5989)
 ```
 
-## Analysis of item a144, against trust facet
+## Test 1: A144 against trust
 
 ```{r a144}
 a144 <- xfun::cache_rds({
@@ -72,6 +75,20 @@ pdf("plots/neo_pi_r_a144.pdf", width = 8.5*1.1, height = 12 * 1.1)
 plot_grid(plotlist = plots, ncol = 2, labels = "AUTO")
 dev.off()
 ```
+
+## Test 2: values versus ideas
+
+```{r values ideas}
+o6 <- paste0("O", seq(28, 238, 30))
+o5 <- paste0("O", seq(23, 233, 30))
+comps <- expand.grid(o6, o5, stringsAsFactors = F)
+simpleCache("open", {
+  test_specific_items(neo, comps$Var1, comps$Var2,
+                      param)
+  })
+```
+
+The significance tests gives a residual of `r open$aggregated_deviance[1]` and a $p$-value of `r open$p_aggregated[1]`.
 
 ## Test items against dimensions with 10 bootstrap samples
 
@@ -141,9 +158,9 @@ print(res, include.rownames = F, booktabs = TRUE, file = "tables/neo_pi_r.tex",
       caption.placement = "top", label = "tab:neo_pi_r")
 ```
 
-## Partial Fit plots
+## Partial fit plots
 
-Sorry, this code is currently somewhat messy and not commented.
+This code is currently somewhat messy and not commented.
 
 ```{r}
 agg <- neo_pi_r20k %>% group_by(i) %>% 
@@ -187,7 +204,6 @@ agg2 <- agg %>% mutate(facet_fit_percentage = facet_fit/sum(facet_fit))
 agg3 <- left_join(agg2, items, by = c("i" = "item_char"))
 agg3$facet_fit_percentage <- agg3$facet_fit_percentage * 100
 
-#pdf(file = "plots/neo_pi_r_partial_deviances2.pdf", width = 7*0.55, height = 10*0.8)
 p2 <- ggplot(agg3, aes(as.factor(facet.x), i, fill = facet_fit_percentage)) + 
   geom_raster() + 
   coord_equal() + 
@@ -203,22 +219,33 @@ p2 <- ggplot(agg3, aes(as.factor(facet.x), i, fill = facet_fit_percentage)) +
         text = element_text(size = 20)
         )
 p2
-#dev.off()
 
 pdf("plots/eugene_complete.pdf", width = 12, height = 7)
 plot_grid(p1, p2, nrow = 1)
 dev.off()
 ```
 
-## Item C35
+## openness
 
 ```{r}
-res <- neo %>% 
-  select(grep("C", names(neo))) %>% 
-  group_by(C35) %>% 
-  summarize_all(function(x) mean(x, na.rm = T)) %>% 
-  slice(1:5)
-table(neo$C35)
-table(apply(res, 2, function(x) all(x[1] > x[2:5])))
-```
+sum_score <- neo %>% select(all_of(o5)) %>% rowSums(na.rm = TRUE)
+sum_score_o6 <- neo %>% select(all_of(o6)) %>% rowSums(na.rm = TRUE)
 
+df <- data.frame(o6 = sum_score_o6, o5 = sum_score)
+
+cor(df, use = "complete.obs")
+
+ggplot(df, aes(o6, o5)) + 
+  geom_point() + 
+  geom_smooth()
+
+df2 <- df %>%
+  filter(o6 >= 20, o6 <= 38)
+p <- ggplot(df2, aes(o6, o5)) + 
+  stat_summary(fun.data = "mean_cl_normal",
+               fun.args = list(conf.int = .95)) +
+                     theme_classic() +
+  scale_x_continuous("Sum Score Liberalism") +
+  scale_y_continuous("Sum Score Intellect")
+p
+```
