@@ -29,7 +29,8 @@ Load some packages. I will use librarian for installing/loading packages.
 if (!require('librarian')) install.packages('librarian')
 librarian::shelf(tidyr, dplyr, ggplot2, cowplot, corrgram, ggraph, igraph,
                  GGally, network, ggnetwork, tidygraph, furrr, star,
-                 progressr, simpleCache, lavaanPlot, lavaan)
+                 progressr, simpleCache, lavaanPlot, lavaan, DiagrammeRsvg,
+                 rsvg)
 ```
 
 Helper function
