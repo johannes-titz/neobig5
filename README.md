@@ -14,11 +14,12 @@ five latent factors and how to fix them**.
 
 Open the .Rmd-files and run them to create all tables, figures and
 overviews (html). Note that knitting the Rmd-files will not rerun the
-simulations but use the cached simulations.
+simulations but use the cached simulations. If you want to rereun the
+simulations, you must remove the cache folders or specific files.
 
 ## More details
 
-There are three .Rmd files that produce simulations, tables and figures,
+There are four .Rmd files that produce simulations, tables and figures,
 one additional .Rmd file produces Figure 1.
 
 WARNING: It can take very long to run the simulations on a normal PC.
