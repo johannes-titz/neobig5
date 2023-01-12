@@ -9,7 +9,7 @@ output:
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, cache = T, message = F, warning = FALSE)
+knitr::opts_chunk$set(echo = TRUE, cache = F, message = F, warning = FALSE)
 ```
 
 ## Intro
