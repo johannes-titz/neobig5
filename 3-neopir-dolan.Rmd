@@ -36,19 +36,11 @@ data("neo_pi_r_eugene")
 neo <- big5
 ```
 
-The data set contains some participants that produced many missing values:
+The data set does not contain many missing values.
 
 ```{r}
 missing <- rowSums(is.na(neo))
 stem(missing)
-```
-
-Participants with more than 5% missing values were removed (about 2% of the sample).
-
-```{r}
-filter <- missing <= nrow(neo) * 0.05
-mean(filter)
-neo <- neo[filter, ]
 ```
 
 Set cache dir for simpleCache:
@@ -63,6 +55,7 @@ Set simulation parameters. I am on GNU/Linux, please check that the detection of
 mc_cores <- round(parallel::detectCores() - 1)
 alpha <- 0.05 / 240
 param <- sim_parameters(n_bootstrap_samples = 1e4, mc_cores = mc_cores)
+set.seed(5989)
 ```
 
 ## Test 1: A144 against trust
@@ -204,7 +197,7 @@ p2
 dev.off()
 ```
 
-## figure 7
+## some examples
 
 ```{r}
 data("neo_pi_r_eugene")
@@ -246,29 +239,10 @@ sum_score <- neo %>% select(all_of(o5)) %>% rowSums(na.rm = TRUE)
 sum_score_o6 <- neo %>% select(all_of(o6)) %>% rowSums(na.rm = TRUE)
 
 df <- data.frame(o6 = sum_score_o6, o5 = sum_score)
-means <- df %>%
-  group_by(o6) %>%
-  summarize(mean = mean(o5, na.rm = TRUE), se = sd(sum_score, na.rm = TRUE) / n(), n = n()) %>%
-  filter(n >= 10)
-
-ggplot(means, aes(o6, mean, ymin = mean - se, ymax = mean + se)) +
-  geom_pointrange(shape = 20) +
-  scale_x_continuous("Sum Score Liberalism") +
-  scale_y_continuous("Sum Score Intellect") +
-  theme_classic()
 
 ggplot(df, aes(o6, o5)) +
   geom_point() +
   geom_smooth()
 
-#p <- ggplot(df, aes(o6, o5)) + 
-#  stat_summary(fun.data = "mean_cl_normal",
-#               fun.args = list(conf.int = .95)) +
-#                     theme_classic() +
-#  scale_x_continuous("C110 I put little time and effort into my work. (R)") +
-#  scale_y_continuous("Sum score conscientiousness")
-#p
-
 cor(df, use = "complete.obs")
 ```
-

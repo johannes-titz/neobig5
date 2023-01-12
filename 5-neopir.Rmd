@@ -1,0 +1,261 @@
+---
+title: "NEO-PI-R Combined"
+author: "Johannes Titz"
+date: "01/12/2023"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache = F, message = F, warning = FALSE)
+```
+
+## Intro
+
+This is a new analysis for the revision. If you have not yet installed the `star` package, do it now:
+
+```{r eval=TRUE, include=TRUE}
+if (require("star") == F) {
+  install.packages("star_0.1.0.tar.gz", repos = NULL, type = "source")
+}
+librarian::shelf(dplyr, ggplot2)
+```
+
+One of the original data is available at https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/HE6LJR but I also packaged it into `star`:
+
+```{r}
+library(star)
+data("neo_pi_r_eugene")
+neo <- neo_pi_r_eugene
+```
+
+The data set contains some participants that produced many missing values:
+
+```{r}
+missing <- rowSums(is.na(neo))
+stem(missing)
+```
+
+Participants with more than 5% missing values were removed (about 2% of the sample).
+
+```{r}
+filter <- missing <= nrow(neo) * 0.05
+mean(filter)
+neo <- neo[filter, ]
+```
+
+The other original data set is available in the `qgraph` R package. I restructured the data slightly and repackaged it into `star` under the same name as in `qgraph` (big5):
+
+```{r}
+library(star)
+data(big5, package = "star")
+```
+
+We can combine both data sets to visualize the problems they have in common:
+
+```{r}
+d <- bind_rows(Eugene = neo, Dutch = big5, .id = "group")
+```
+
+## prepare 
+
+I will use librarian for installing/loading packages. First line checks if librarian is installed, if not, it is installed.
+
+```{r}
+if (!require('librarian')) install.packages('librarian')
+librarian::shelf(tidyr, dplyr, ggplot2, cowplot, furrr)
+```
+
+## values / ideas
+
+```{r}
+o6 <- paste0("O", seq(28, 238, 30))
+o5 <- paste0("O", seq(23, 233, 30))
+sum_score <- d %>% select(all_of(o5)) %>% rowSums(na.rm = TRUE)
+sum_score_o6 <- d %>% select(all_of(o6)) %>% rowSums(na.rm = TRUE)
+
+df <- data.frame(o6 = sum_score_o6, o5 = sum_score, group = d$group)
+df$Sample <- stringr::str_to_sentence(df$group)
+values <- ggplot(df, aes(o6, o5, group = Sample, color = Sample, shape = Sample), alpha = 0.25) + 
+  geom_point(alpha=0.5) + 
+  geom_smooth(fill = "grey80") + 
+  scale_x_continuous("Sum score of facet values") +
+  scale_y_continuous("Sum score of facet ideas") +
+  scale_color_brewer(type = "qual", palette = "Dark2") + 
+  theme_bw() +
+  theme_classic() + 
+  theme(legend.position = c(0.85, 0.15))
+values
+cairo_pdf("plots/values.pdf", width = 5, height = 4)
+values
+dev.off()
+```
+
+```{r}
+jitter <- 0.05
+```
+
+## n96
+
+```{r}
+d2 <- d %>%
+  group_by(group) %>%
+  #filter(group == "eugene") %>%
+  select(starts_with("N")) %>%
+  mutate(N96 = ifelse(group == "Dutch", N96+jitter, N96-jitter)) %>%
+  rowwise() %>%
+  mutate(c_sumscore = sum(c_across(N1:N236)))
+
+cor(d2$c_sumscore[d2$group == "Eugene"], d2$N96[d2$group == "Eugene"], use = "complete.obs")
+cor(d2$c_sumscore[d2$group == "Dutch"], d2$N96[d2$group == "Dutch"], use = "complete.obs")
+
+n96 <- ggplot(d2, aes(N96, c_sumscore,
+               group = group, color = group, shape = group)) + 
+  stat_summary(fun.data = "mean_cl_normal",
+              fun.args = list(conf.int = .95)) + 
+ stat_summary(fun.data = "mean_cl_normal",
+              fun.args = list(conf.int = .95), geom = "line", linetype = "dashed") + 
+  scale_color_brewer(type = "qual", palette = "Dark2", guide = "none") + 
+  scale_shape(guide = "none") + 
+  theme_classic() +
+  scale_y_continuous("Sum score neuroticism")
+n96
+```
+
+## C35
+
+Item C35 violated monotonicity in both data sets. As can be seen in Figure x the main problem is at scale point 1. ...
+
+For the dutch data set, the relationship is even negative (r = -0.09). Taking voting seriously is slightly negatively associated with conscientiousness. The item is clearly problematic.
+
+
+```{r}
+d2 <- d %>%
+  group_by(group) %>%
+  select(starts_with("C")) %>%
+  mutate(C35 = ifelse(group == "Dutch", C35+jitter, C35-jitter)) %>%
+  rowwise() %>%
+  mutate(c_sumscore = sum(c_across(C5:C235), !c_across(C35)))
+table(big5[, "C35"])
+table(neo_pi_r_eugene[, "C35"])
+
+c35plot <- ggplot(d2, aes(C35, c_sumscore,
+               group = group, color = group, shape = group)) + 
+  stat_summary(fun.data = "mean_cl_normal",
+              fun.args = list(conf.int = .95)) + 
+ stat_summary(fun.data = "mean_cl_normal",
+              fun.args = list(conf.int = .95), geom = "line", linetype = "dashed") + 
+  theme_classic() +
+  scale_color_brewer(type = "qual", palette = "Dark2", guide = "none") + 
+  scale_shape(guide = "none") + 
+  scale_y_continuous("Sum score conscientiousness")
+
+c35plot
+d2 %>%
+  group_by(group) %>%
+  summarize(cor(C35, c_sumscore, use = "complete.obs"))
+```
+
+## E17
+
+```{r}
+a5 <- paste0("E", seq(27, 237, 30)) # c(seq(22, 234, 30), 
+d2 <- d %>%
+  filter(!is.na(E17)) %>%
+  group_by(group) %>%
+  mutate(E17 = ifelse(group == "Dutch", E17+jitter, E17 - jitter)) %>%
+  select(a5, E17) %>%
+  rowwise() %>%
+  mutate(c_sumscore = sum(c_across(a5), na.rm = T))
+
+e17plot <- ggplot(d2, aes(E17, c_sumscore, 
+                          group = group, color = group, shape = group)) + 
+stat_summary(fun.data = "mean_cl_normal",
+              fun.args = list(conf.int = .95)) + 
+ stat_summary(fun.data = "mean_cl_normal",
+              fun.args = list(conf.int = .95), geom = "line", linetype = "dashed") + 
+  scale_y_continuous("Sum score cheerfulness") +
+  scale_color_brewer(type = "qual", palette = "Dark2", guide = "none") + 
+  scale_shape(guide = "none") + 
+  theme_classic()
+e17plot
+d2 %>%
+  group_by(group) %>%
+  summarize(cor(E17, c_sumscore, use = "complete.obs"))
+```
+
+
+## A164
+
+```{r}
+a5 <- paste0("A", seq(24, 234, 30))
+d2 <- d %>%
+  # for scale point there is only 1 answer!
+  filter(!is.na(A164), A164 >= 2) %>%
+  group_by(group) %>%
+  select(a5, A164) %>%
+  mutate(A164 = ifelse(group == "Dutch", A164+jitter, A164-jitter)) %>%
+  rowwise() %>%
+  mutate(c_sumscore = sum(c_across(a5), na.rm = T))
+table(big5[, "A164"])
+table(neo_pi_r_eugene$A164)
+
+d2$Sample <- d2$group
+a164plot <- ggplot(d2, aes(A164, c_sumscore,
+               group = Sample, color = Sample, shape = Sample)) + 
+ stat_summary(fun.data = "mean_cl_normal",
+              fun.args = list(conf.int = .95)) + 
+ stat_summary(fun.data = "mean_cl_normal",
+              fun.args = list(conf.int = .95), geom = "line", linetype = "dashed") + 
+theme_classic() +
+  scale_color_brewer(type = "qual", palette = "Dark2") + 
+  scale_y_continuous("Sum score modesty") +
+  scale_x_continuous(limits = c(1, 5)) + 
+  theme(legend.position = c(0.85, 0.85))
+
+a164plot
+d2 %>%
+  group_by(group) %>%
+  summarize(cor(A164, c_sumscore, use = "complete.obs"))
+```
+
+## A144
+
+```{r}
+a5 <- paste0("A", seq(4, 214, 30))
+d2 <- d %>%
+  filter(!is.na(A144)) %>%
+  group_by(group) %>%
+  mutate(A144 = ifelse(group == "Dutch", A144+jitter, A144-jitter)) %>%
+  select(a5, A144) %>%
+  rowwise() %>%
+  mutate(c_sumscore = sum(c_across(a5), na.rm = T))
+
+a144plot <- ggplot(d2, aes(A144, c_sumscore,
+               group = group, color = group)) + 
+ stat_summary(fun.data = "mean_cl_normal",
+              fun.args = list(conf.int = .95)) + 
+theme_classic() +
+  scale_color_brewer(type = "qual", palette = "Dark2") + 
+  scale_y_continuous("Sum Score Trust")
+
+a144plot
+
+d2 %>%
+  group_by(group) %>%
+  summarize(cor(A144, c_sumscore, use = "complete.obs"))
+```
+
+## combine
+
+Combine all plots
+
+```{r}
+p <- plot_grid(plotlist = list(a164plot, c35plot, e17plot, n96), ncol = 2, labels = "AUTO", label_x = 0.52)
+cairo_pdf("plots/part2.pdf", width = 16*0.65, height = 10*0.65)
+p
+dev.off()
+p
+```

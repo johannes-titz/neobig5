@@ -1,16 +1,15 @@
 ---
 title: "NEO-PI-R Eugene"
 author: "Johannes Titz"
-date: "12/3/2021"
+date: "12/3/2021, revision 01/12/2023"
 output:
   html_document:
     toc: true
     toc_depth: 2
 ---
 
-<!-- PID: 3756 -->
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, cache = F, message = F, warning = FALSE)
+knitr::opts_chunk$set(echo = TRUE, cache = T, message = F, warning = FALSE)
 ```
 
 ## Intro
@@ -41,19 +40,19 @@ stem(missing)
 Participants with more than 5% missing values were removed (about 2% of the sample).
 
 ```{r}
-mean(missing > nrow(neo) * 0.05)
-neo <- neo[!missing, ]
+filter <- missing <= nrow(neo) * 0.05
+mean(filter)
+sum(filter)
+neo <- neo[filter, ]
 ```
-
 
 ## prepare 
 
-Load some packages and use a short name for the data set. I will use librarian for installing/loading packages. First line checks if librarian is installed, if not, it is installed.
+I will use librarian for installing/loading packages. First line checks if librarian is installed, if not, it is installed.
 
 ```{r}
 if (!require('librarian')) install.packages('librarian')
 librarian::shelf(tidyr, dplyr, ggplot2, cowplot, furrr, simpleCache)
-neo <- neo_pi_r_eugene
 ```
 
 Set simulation parameters. I am on GNU/Linux, please check that the detection of cores works for you. If it does not work, just set it to a fixed value. `star` uses `parallel` for parallel computation. Sorry, Windows users, parallelization only works under GNU/Linux. You should still be able to run the code, but you cannot take advantage of multiple cores. I tried to implement parallelization via futures (`furrr`), but this turned out to be slower than using a single core.
@@ -125,7 +124,6 @@ left_items <- extract_sig_items(neo_pi_r10, 0.2)
 Check how many items could not be tested properly:
 
 ```{r}
-library(dplyr)
 neo_pi_r10 %>% 
   group_by(i) %>% 
   summarize(warn = mean(var0 + n_min_violated > 0)) %>% 
@@ -263,14 +261,4 @@ cor(df, use = "complete.obs")
 ggplot(df, aes(o6, o5)) + 
   geom_point() + 
   geom_smooth()
-
-df2 <- df %>%
-  filter(o6 >= 20, o6 <= 38)
-p <- ggplot(df2, aes(o6, o5)) + 
-  stat_summary(fun.data = "mean_cl_normal",
-               fun.args = list(conf.int = .95)) +
-                     theme_classic() +
-  scale_x_continuous("Sum Score Liberalism") +
-  scale_y_continuous("Sum Score Intellect")
-p
 ```
