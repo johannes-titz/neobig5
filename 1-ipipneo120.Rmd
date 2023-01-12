@@ -1,7 +1,7 @@
 ---
-title: "1-ipipneo120"
+title: "1 IPIP-NEO-120"
 author: "Johannes Titz"
-date: "12/10/2021"
+date: "original date: 12/10/2021, revision 06/01/2023"
 output:
   html_document:
     toc: true
@@ -9,11 +9,11 @@ output:
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, cache = TRUE, message = FALSE,
+knitr::opts_chunk$set(echo = TRUE, cache = F, message = FALSE,
                       warning = FALSE)
 ```
 
-## Intro
+## Prepration
 
 This is analysis 1 of the paper. First, install the `star` package:
 
@@ -33,7 +33,7 @@ librarian::shelf(tidyr, dplyr, ggplot2, cowplot, corrgram, ggraph, igraph,
                  rsvg)
 ```
 
-Helper function
+Helper function to get means+se.
 
 ```{r}
 get_stats <- function(var, df) {
@@ -65,7 +65,9 @@ fpath <- system.file("extdata", "ipipneo.rda", package = "star")
 if (!exists("ipipneo")) load(fpath)
 ```
 
-Set simulation parameters. I am on GNU/Linux, please check that the detection of cores works for you. If it does not work, just set it to a fixed value. `star` uses `parallel` for parallel computation. Sorry, Windows users, parallelization only works under GNU/Linux. You should still be able to run the code, but you cannot take advantage of multiple cores. I tried to implement parallelization via futures (`furrr`), but this turned out to be slower than using a single core.
+Set simulation parameters. If you use the cache folder (the default), the simulations will not be run again. If you want to rerun the simulation, just remove the cache files or the whole folder.
+
+I am on GNU/Linux, please check that the detection of cores works for you. If it does not work, just set it to a fixed value. `star` uses `parallel` for parallel computation. Sorry, Windows users, parallelization only works under GNU/Linux. You should still be able to run the code, but you cannot take advantage of multiple cores. I tried to implement parallelization via futures (`furrr`), but this turned out to be slower than using a single core.
 
 ```{r params}
 mc_cores <- round(parallel::detectCores() - 1)
@@ -117,7 +119,7 @@ result$group <- substr(result$i, 1, 1)
 result <- left_join(result, labels, by = c("i" = "item_char"))
 # a better deviance value for network graph
 result <- result %>%
-  mutate(deviance_norm = sqrt(deviance_data / n) * 100)
+  mutate(deviance_norm = sqrt(deviance_data)) # / n) * 100)
 # display result
 result %>%
   select(i, j, p, deviance_data) %>%
@@ -248,11 +250,11 @@ power51 <- create_object(
   bootstrap_samples_monoreg = 1e3,
   alpha = 0.05/3
 )
-simpleCache("powern51", {calculate_power(power51)$power}, reload = T)
+simpleCache("powern51", {calculate_power(power51)$power})
 powern51
 ```
 
-```{r powera84, eval = T}
+```{r powera84}
 i <- rep("A84", 7)
 j <- c("A4", "A34", "A64", "A94", "A99", "A74", "A49")
 
@@ -292,10 +294,10 @@ power_liberalism
 result %>%
   group_by(i) %>%
   summarize(sum_dev = sum(deviance_data, na.rm = TRUE)) %>%
-  arrange(sum_dev)
+  arrange(desc(sum_dev))
 ```
 
-### c110
+## c110
 
 One of the most interesting items from the network graph is C110 because it is inconsistent with all other 23 items.
 
@@ -316,7 +318,7 @@ p
 dev.off()
 ```
 
-sem
+## c110 sem
 
 ```{r}
 m0 <- "
@@ -362,7 +364,7 @@ means <- df %>%
   summarize(mean = mean(sum_score, na.rm = TRUE), sd = sd(sum_score, na.rm = TRUE), n())
 
 myplot <- ggplot(means, aes(E107, mean)) + 
-  geom_point(shape = 20, size = 5) + 
+  geom_point(shape = 20, size = 4) + 
   theme_classic() + 
   scale_y_continuous("Sum score excitement seeking") + 
   scale_x_continuous("E107 I like to take it easy (R)")
@@ -374,9 +376,11 @@ cor(df, use = "complete.obs")
 cor(ipipneo$E107, ipipneo[, e5], use = "complete.obs")
 cors <- sort(cor(ipipneo$E107, ipipneo[, grepl("^E", names(ipipneo))], use = "complete.obs"))
 mean(cors)
+tail(cors)
+head(cors)
 ```
 
-### e107 sem
+## e107 sem
 
 ```{r}
 m0 <- "
@@ -406,9 +410,19 @@ fit1 <- sem(model = m1, data = ipipneo)
 
 sol0 <- standardizedsolution(fit0, type = "std.all")
 sol1 <- standardizedsolution(fit1, type = "std.all")
+
+# facet on C
+sol0 %>% filter(lhs == "extraversion", rhs == "ex4") %>%
+  select(lhs, rhs, est.std)
+# item on facet
+sol0 %>% filter(lhs == "ex4", rhs == "E107") %>%
+  select(lhs, rhs, est.std)
+# item on facet after "fix"
+sol1 %>% filter(lhs == "extraversion", rhs == "ex4") %>%
+  select(lhs, rhs, est.std)
 ```
 
-## Plot liberalism vs. intellect
+## liberalism vs. intellect
 
 ```{r}
 sum_score <- ipipneo %>% select(all_of(o5)) %>% rowSums(na.rm = TRUE)
@@ -421,11 +435,10 @@ df <- df %>%
   # below 3 there are very few values
   filter(o6 >=3)
 myplot <- ggplot(df, aes(o6, o5)) +
-  stat_summary(fun.data = "mean_cl_normal",
-               fun.args = list(conf.int = .95)) +
-                     theme_classic() + 
-                     scale_x_continuous("Facet liberalism") +
-                     scale_y_continuous("Facet intellect")
+  stat_summary(fun.data = "mean_cl_normal") + 
+               theme_classic() + 
+                 scale_x_continuous("Facet liberalism") +
+                 scale_y_continuous("Facet intellect")
 myplot
 cor(df, use = "complete.obs")
 cairo_pdf("plots/liberalism_intellect2.pdf", width = 5, height = 4)
@@ -495,6 +508,8 @@ tbl %>%
   mutate(diff = est.std2 - est.std)
 r2 <- sum(tbl$est.std**2) / 6
 r2b <- sum(tbl$est.std2**2) / 6
+r2
+r2b
 r2b - r2
 colnames(tbl) <- c("lhs", "Facet", "Loading", "Loading w/o A54, A84")
 print(xtable::xtable(tbl[, -1], caption = "", label = "tab:modesty"),
@@ -526,8 +541,8 @@ names(res) <- a5_names
 res2 <- plyr::ldply(res, "data.frame")
 names(res2)[1] <- "Item"
 res2$Item <- factor(res2$Item, levels = a5_names)
-mplot <- ggplot(res2, aes(group, mean, ymin = mean - se * qnorm(0.99),
-                          ymax = mean + se * qnorm(0.99),
+mplot <- ggplot(res2, aes(group, mean, ymin = mean - se * qnorm(0.95),
+                          ymax = mean + se * qnorm(0.95),
                           group = Item, color = Item, shape = Item)) +
     geom_pointrange() +
     geom_line(linetype = "dashed") +
@@ -543,40 +558,3 @@ cairo_pdf("plots/modestytrust.pdf", width = 5, height = 4)
 mplot
 dev.off()
 ```
-
-## n46
-
-n46, 0.37 5 facot rmodel ladung.
-
-```{r}
-n5 <- labels$item_char[labels$dimension == "N" & labels$facet == 5]
-sum_score <- ipipneo %>% select(n5) %>% rowSums(na.rm = TRUE)
-df <- data.frame(N46 = ipipneo$N46, sum_score)
-means <- df %>%
-  group_by(N46) %>%
-  summarize(mean = mean(sum_score, na.rm = TRUE), sd = sd(sum_score, na.rm = TRUE), n())
-ggplot(means, aes(N46, mean)) + 
-  geom_point() + 
-  theme_classic()
-cor(df, use = "complete.obs")
-```
-
-```{r}
-e_viol <- result %>% filter(i == "N46") %>%
-  select(j) %>% unlist()
-
-e <- ipipneo %>%
-  select(starts_with("N"))
-means <- e %>% group_by(N46) %>%
-  summarize_all(mean, na.rm = TRUE)
-means_long <- tidyr::pivot_longer(means, cols = -N46)
-means_long$viol <- ifelse(means_long$name %in% e_viol, 1, 0)
-
-means_long <- dplyr::left_join(means_long, labels, by = c("name" = "item_char"))
-
-means_long <- means_long %>% filter(viol == 1)
-ggplot(means_long, aes(N46, value, group = name, color = as.factor(name))) + geom_point() + geom_line(alpha = 0.25) +
-  #facet_grid(~viol) +
-  theme_classic()
-```
-
