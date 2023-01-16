@@ -437,8 +437,8 @@ df <- df %>%
 myplot <- ggplot(df, aes(o6, o5)) +
   stat_summary(fun.data = "mean_cl_normal") + 
                theme_classic() + 
-                 scale_x_continuous("Facet liberalism") +
-                 scale_y_continuous("Facet intellect")
+                 scale_x_continuous("Sum score liberalism") +
+                 scale_y_continuous("Sum score intellect")
 myplot
 cor(df, use = "complete.obs")
 cairo_pdf("plots/liberalism_intellect2.pdf", width = 5, height = 4)
