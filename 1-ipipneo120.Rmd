@@ -19,7 +19,9 @@ This is analysis 1 of the paper. First, install the `star` package:
 
 ```{r}
 if (!require("star")) {
-  install.packages("star_0.1.0.tar.gz", repos = NULL, type = "source")
+  librarian::shelf(fdrtool, pbmcapply, dqrng)
+  install.packages("star_0.1.0.tar.gz", repos = NULL, type = "source",
+                   dependencies = TRUE)
 }
 ```
 

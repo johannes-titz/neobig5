@@ -1,42 +1,30 @@
+---
+output: github_document
+---
 
 <!-- README.md is generated from README.Rmd. Please edit that file -->
+
+
 
 # neobig5
 
 <!-- badges: start -->
 <!-- badges: end -->
 
-This repository accompanies the paper **Titz, J. State-trace analysis
-meets psychometrics: Why the Big Five questionnaires are not based on
-five latent factors and how to fix them**.
+This repository accompanies the paper **Titz, J. State-trace analysis meets personality measurement: Why the Big Five questionnaires are not based on five latent factors and how to fix them**.
 
 ## Quick start
 
-Open the .Rmd-files and run them to create all tables, figures and
-overviews (html). Note that knitting the Rmd-files will not rerun the
-simulations but use the cached simulations. If you want to rereun the
-simulations, you must remove the cache folders or specific files.
+Open the .Rmd-files and run them to create all tables, figures and overviews (html). Note that knitting the Rmd-files will not rerun the simulations but use the cached simulations. If you want to rerun the simulations, you must remove the cache folders or specific files.
 
 ## More details
 
-There are four .Rmd files that produce simulations, tables and figures,
-one additional .Rmd file produces Figure 1.
+There are four .Rmd files that produce simulations, tables and figures, one additional .Rmd file produces Figure 1.
 
-WARNING: It can take very long to run the simulations on a normal PC.
-Just for reference, I use a DELL Server (R6515) with a modern CPU (32
-Cores) and 72 GB of RAM. For analysis 2 it takes about 15 minutes. For
-analysis 1 it takes several hours since the data set is gigantic (about
-618,000 rows). I did not attempt to run the simulations on a normal PC.
+WARNING: It can take very long to run the simulations on a normal PC. Just for reference, I use a DELL Server (R6515) with a modern CPU (32 Cores) and 72 GB of RAM. For analysis 2 it takes about 15 minutes. For analysis 1 it takes several hours since the data set is gigantic (about 618,000 rows). I did not attempt to run the simulations on a normal PC. 
 
-The simulations are cached; if you want to run them from scratch remove
-the cache folders. Unfortunately, the .Rmd files do not display progress
-bars, so you will not see how long it takes. But if you run the commands
-outside the Rmd-files, the progress will be displayed.
+The simulations are cached; if you want to run them from scratch remove the cache folders. Unfortunately, the .Rmd files do not display progress bars, so you will not see how long it takes. But if you run the commands outside the Rmd-files, the progress will be displayed.
 
-The package `star` is used for monotonicity analysis. It is still in
-development, but has been tested thoroughly. The current version is
-included in this repository and will be automatically installed when the
-Rmd-files are run.
+The package `star` is used for monotonicity analysis. It is still in development, but has been tested thoroughly. The current version is included in this repository and will be automatically installed when the Rmd-files are run.
 
-If you have any questions, please contact me via e-mail: johannes at
-titz.science or johannes.titz at gmail.com
+If you have any questions, please contact me via e-mail: johannes at titz.science or johannes.titz at gmail.com

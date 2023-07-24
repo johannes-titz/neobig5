@@ -16,11 +16,11 @@ knitr::opts_chunk$set(
 <!-- badges: start -->
 <!-- badges: end -->
 
-This repository accompanies the paper **Titz, J. State-trace analysis meets psychometrics: Why the Big Five questionnaires are not based on five latent factors and how to fix them**.
+This repository accompanies the paper **Titz, J. State-trace analysis meets personality measurement: Why the Big Five questionnaires are not based on five latent factors and how to fix them**.
 
 ## Quick start
 
-Open the .Rmd-files and run them to create all tables, figures and overviews (html). Note that knitting the Rmd-files will not rerun the simulations but use the cached simulations. If you want to rereun the simulations, you must remove the cache folders or specific files.
+Open the .Rmd-files and run them to create all tables, figures and overviews (html). Note that knitting the Rmd-files will not rerun the simulations but use the cached simulations. If you want to rerun the simulations, you must remove the cache folders or specific files.
 
 ## More details
 
